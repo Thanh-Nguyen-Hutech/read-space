@@ -7,7 +7,13 @@ import '../data/studio_repository.dart';
 
 class AddChapterScreen extends ConsumerStatefulWidget {
   final String bookId;
-  const AddChapterScreen({super.key, required this.bookId});
+  final String bookTitle; // Bổ sung biến nhận tên truyện
+
+  const AddChapterScreen({
+    super.key,
+    required this.bookId,
+    required this.bookTitle,
+  });
 
   @override
   ConsumerState<AddChapterScreen> createState() => _AddChapterScreenState();
@@ -29,6 +35,7 @@ class _AddChapterScreenState extends ConsumerState<AddChapterScreen> {
         bookId: widget.bookId,
         title: _titleController.text.trim(),
         content: contentJson,
+        bookTitle: widget.bookTitle, // Truyền tên truyện vào để tạo thông báo
       );
       if (mounted) context.pop();
     } catch (e) {
@@ -69,17 +76,13 @@ class _AddChapterScreenState extends ConsumerState<AddChapterScreen> {
           const Divider(),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: quill.QuillSimpleToolbar(
-              controller: _quillController,
-            ),
+            child: quill.QuillSimpleToolbar(controller: _quillController),
           ),
           const Divider(),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: quill.QuillEditor.basic(
-                controller: _quillController,
-              ),
+              child: quill.QuillEditor.basic(controller: _quillController),
             ),
           ),
         ],

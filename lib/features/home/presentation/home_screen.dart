@@ -12,35 +12,20 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(firebaseAuthProvider).currentUser;
-    final booksAsyncValue = ref.watch(booksProvider);
+
+    // Gọi các luồng dữ liệu chuyên biệt đã định nghĩa
+    final newBooksAsync = ref.watch(newBooksProvider);
+    final hotBooksAsync = ref.watch(hotAllTimeBooksProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ReadSpace'),
+        title: const Text('ReadSpace', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search_rounded),
-            onPressed: () {
-              context.push('/search');
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Đăng xuất',
-            onPressed: () async {
-              await ref.read(authRepositoryProvider).signOut();
-              if (context.mounted) context.go('/login');
-            },
-          ),
-        ],
       ),
-      // Dùng SingleChildScrollView để toàn bộ màn hình có thể cuộn dọc
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Section: Lời chào
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -51,69 +36,21 @@ class HomeScreen extends ConsumerWidget {
                     style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey),
                   ),
                   Text(
-                    user?.email?.split('@')[0] ?? 'Người đọc',
+                    user?.displayName ?? user?.email?.split('@')[0] ?? 'Người đọc',
                     style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
             ),
 
-            // Section: Load dữ liệu sách
-            booksAsyncValue.when(
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-              error: (error, stack) => Center(
-                child: Text('Lỗi tải dữ liệu: $error', style: const TextStyle(color: Colors.red)),
-              ),
-              data: (books) {
-                if (books.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32.0),
-                      child: Text('Chưa có cuốn sách nào trên hệ thống.'),
-                    ),
-                  );
-                }
+            _buildSectionHeader(context, title: 'Mới cập nhật'),
+            _buildHorizontalList(newBooksAsync),
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Mục: Dành cho bạn
-                    _buildSectionHeader(context, title: 'Dành cho bạn'),
-                    SizedBox(
-                      height: 240,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: books.length,
-                        itemBuilder: (context, index) {
-                          return _buildBookCard(context, books[index]);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+            const SizedBox(height: 24),
 
-                    // Mục: Mới cập nhật
-                    _buildSectionHeader(context, title: 'Mới cập nhật'),
-                    SizedBox(
-                      height: 240,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: books.reversed.length,
-                        itemBuilder: (context, index) {
-                          return _buildBookCard(context, books.reversed.toList()[index]);
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+            _buildSectionHeader(context, title: 'Hot nhất mọi thời gian'),
+            _buildHorizontalList(hotBooksAsync),
+
             const SizedBox(height: 32),
           ],
         ),
@@ -121,7 +58,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  // Widget dùng chung để tạo Tiêu đề cho các danh mục
   Widget _buildSectionHeader(BuildContext context, {required String title}) {
     final theme = Theme.of(context);
     return Padding(
@@ -129,37 +65,57 @@ class HomeScreen extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          TextButton(
-            onPressed: () {},
-            child: const Text('Xem tất cả'),
-          ),
+          Text(title, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          TextButton(onPressed: () {}, child: const Text('Xem tất cả')),
         ],
       ),
     );
   }
 
-  // Widget dùng chung để vẽ Thẻ sách (Book Card)
+  // Khối xử lý giao diện cuộn ngang dựa trên trạng thái AsyncValue
+  Widget _buildHorizontalList(AsyncValue<List<Book>> booksAsync) {
+    return booksAsync.when(
+      loading: () => const SizedBox(
+        height: 240,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => SizedBox(
+        height: 240,
+        child: Center(child: Text('Lỗi: $error', style: const TextStyle(color: Colors.red))),
+      ),
+      data: (books) {
+        if (books.isEmpty) {
+          return const SizedBox(
+            height: 240,
+            child: Center(child: Text('Chưa có cuốn sách nào.')),
+          );
+        }
+        return SizedBox(
+          height: 240,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: books.length,
+            itemBuilder: (context, index) {
+              return _buildBookCard(context, books[index]);
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBookCard(BuildContext context, Book book) {
     final theme = Theme.of(context);
-
-    // Sử dụng InkWell để tạo hiệu ứng gợn sóng khi bấm
     return InkWell(
-      onTap: () {
-        // Chuyển hướng và truyền ID lên URL
-        context.push('/book/${book.id}');
-      },
+      onTap: () => context.push('/book/${book.id}'),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 140, // Chiều rộng cố định của mỗi thẻ sách
+        width: 140,
         margin: const EdgeInsets.symmetric(horizontal: 4.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Ảnh bìa sách
             Expanded(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -182,7 +138,6 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 8),
-            // Tên sách
             Text(
               book.title,
               maxLines: 2,
@@ -190,7 +145,6 @@ class HomeScreen extends ConsumerWidget {
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 14),
             ),
             const SizedBox(height: 4),
-            // Tác giả
             Text(
               book.author,
               maxLines: 1,

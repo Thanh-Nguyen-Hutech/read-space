@@ -29,6 +29,8 @@ class StudioRepository {
     required String author,
     required String description,
     required File coverImage,
+    required String type,               // THÊM: Định dạng truyện
+    required List<String> categoryIds,  // THÊM: Mảng đa thể loại
   }) async {
     final url = Uri.parse('https://api.imgbb.com/1/upload');
     final request = http.MultipartRequest('POST', url);
@@ -36,17 +38,14 @@ class StudioRepository {
     request.fields['key'] = imgbbApiKey;
     request.files.add(await http.MultipartFile.fromPath('image', coverImage.path));
 
-    // 2. THỰC THI GỬI ẢNH VÀ CHỜ KẾT QUẢ
     final response = await request.send();
     final responseData = await response.stream.bytesToString();
     final jsonMap = json.decode(responseData);
 
     if (jsonMap['success'] == true) {
-      // Lấy đường link URL của ảnh vừa được ImgBB lưu trữ
       final coverUrl = jsonMap['data']['url'];
-
-      // 3. TẠO OBJECT BOOK VÀ LƯU VÀO FIRESTORE
       final newBookRef = _firestore.collection('books').doc();
+
       final newBook = Book(
         id: newBookRef.id,
         title: title,
@@ -57,7 +56,14 @@ class StudioRepository {
         rating: 0.0,
       );
 
-      await newBookRef.set(newBook.toMap());
+      // Chuyển book thành Map và GỘP THÊM các trường mới của hệ thống
+      final bookMap = newBook.toMap();
+      bookMap['type'] = type;
+      bookMap['categoryIds'] = categoryIds;
+      bookMap['status'] = 'Đang ra';
+      bookMap['createdAt'] = FieldValue.serverTimestamp();
+
+      await newBookRef.set(bookMap);
     } else {
       throw Exception('Lỗi upload ảnh lên ImgBB: ${jsonMap['error']['message']}');
     }
@@ -67,25 +73,55 @@ class StudioRepository {
     required String bookId,
     required String title,
     required String content,
+    required String bookTitle, // Thêm tham số này để lấy tên truyện đưa vào thông báo
   }) async {
-    // Trỏ vào sub-collection 'chapters' của cuốn sách đó
     final chaptersRef = _firestore.collection('books').doc(bookId).collection('chapters');
-
-    // Đếm số lượng chương hiện tại để đánh số thứ tự (index) tự động
     final snapshot = await chaptersRef.get();
     final nextIndex = snapshot.docs.length + 1;
 
+    // 1. Thêm chương mới
     final newChapterRef = chaptersRef.doc();
-    final newChapter = Chapter(
-      id: newChapterRef.id,
-      bookId: bookId,
-      title: title,
-      content: content,
-      index: nextIndex,
-      createdAt: DateTime.now(),
-    );
+    await newChapterRef.set({
+      'bookId': bookId,
+      'title': title,
+      'content': content,
+      'index': nextIndex,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
-    await newChapterRef.set(newChapter.toMap());
+    // 2. Phát tán thông báo cho toàn bộ độc giả đang theo dõi (Lưu trong library)
+    // Lưu ý: Cần tạo Index dạng collectionGroup cho collection 'library' trên Firebase Console
+    final followersSnapshot = await _firestore
+        .collectionGroup('library')
+    // documentId của library chính là bookId
+        .where(FieldPath.documentId, isEqualTo: bookId)
+        .get();
+
+    final batch = _firestore.batch();
+    for (var doc in followersSnapshot.docs) {
+      // Lấy uid của độc giả từ đường dẫn: users/{uid}/library/{bookId}
+      final readerUid = doc.reference.parent.parent!.id;
+      final notiRef = _firestore.collection('users').doc(readerUid).collection('notifications').doc();
+
+      batch.set(notiRef, {
+        'title': 'Chương mới: $bookTitle',
+        'body': 'Tác giả vừa cập nhật chương $nextIndex: $title',
+        'type': 'new_chapter',
+        'referenceId': bookId,
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    // Thực thi ghi hàng loạt thông báo
+    await batch.commit();
+
+    // 3. Cập nhật bộ đếm tác giả
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      await _firestore.collection('users').doc(currentUser.uid).set({
+        'totalPublishedChapters': FieldValue.increment(1)
+      }, SetOptions(merge: true));
+    }
   }
 
   Future<void> deleteBook(String bookId) async {
@@ -119,5 +155,13 @@ class StudioRepository {
         .collection('chapters')
         .doc(chapterId)
         .delete();
+
+    // Tự động trừ 1 tổng số chương khi xóa
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      await _firestore.collection('users').doc(currentUser.uid).set({
+        'totalPublishedChapters': FieldValue.increment(-1)
+      }, SetOptions(merge: true));
+    }
   }
 }

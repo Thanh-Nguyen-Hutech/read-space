@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
-import '../../home/presentation/home_screen.dart';
-import '../../library/presentation/library_screen.dart';
-import '../../studio/presentation/upload_book_screen.dart';
-import '../../profile/presentation/profile_screen.dart'; // THÊM IMPORT NÀY
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class MainScreen extends StatefulWidget {
+import '../../home/presentation/home_screen.dart';
+import '../../explore/presentation/explore_screen.dart';
+import '../../profile/presentation/my_works_screen.dart';
+import '../../library/presentation/library_screen.dart';
+import '../../profile/presentation/profile_screen.dart';
+
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+class _MainScreenState extends ConsumerState<MainScreen> {
+  int _selectedIndex = 0;
 
-  // Khai báo 4 màn hình chính thức
+  // Đã xóa UploadBookScreen, chỉ giữ lại đúng 5 màn hình tương ứng với 5 tab
   final List<Widget> _screens = [
     const HomeScreen(),
+    const ExploreScreen(),
+    const MyWorksScreen(),
     const LibraryScreen(),
-    const UploadBookScreen(),
     const ProfileScreen(),
   ];
 
@@ -26,22 +30,18 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
+        index: _selectedIndex,
         children: _screens,
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        // Cập nhật lại các icon và label cho khớp với 4 màn hình
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.library_books_outlined), selectedIcon: Icon(Icons.library_books_rounded), label: 'Thư viện'),
-          NavigationDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: 'Sáng tác'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: 'Cá nhân'),
+          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Trang chủ'),
+          NavigationDestination(icon: Icon(Icons.explore_rounded), label: 'Khám phá'),
+          NavigationDestination(icon: Icon(Icons.add_circle_outline_rounded), label: 'Sáng tác'),
+          NavigationDestination(icon: Icon(Icons.bookmarks_rounded), label: 'Thư viện'),
+          NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Cá nhân'),
         ],
       ),
     );

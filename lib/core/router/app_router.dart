@@ -13,6 +13,7 @@ import '../../features/studio/domain/chapter_model.dart';
 import '../../features/studio/presentation/edit_chapter_screen.dart';
 import '../../features/profile/presentation/my_works_screen.dart';
 import '../../features/profile/presentation/my_reviews_screen.dart';
+import '../../features/studio/presentation/upload_book_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -70,7 +71,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'add_chapter',
         builder: (context, state) {
           final bookId = state.pathParameters['bookId']!;
-          return AddChapterScreen(bookId: bookId);
+          final bookTitle = state.extra as String? ?? 'Truyện chưa đặt tên';
+          return AddChapterScreen(bookId: bookId, bookTitle: bookTitle);
         },
       ),
       GoRoute(
@@ -91,6 +93,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/my-reviews',
         name: 'my_reviews',
         builder: (context, state) => const MyReviewsScreen(),
+      ),
+      GoRoute(
+        path: '/upload-book',
+        name: 'upload_book',
+        builder: (context, state) => const UploadBookScreen(),
       ),
     ],
   );

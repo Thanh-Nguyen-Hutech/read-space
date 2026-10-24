@@ -1,33 +1,58 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../home/domain/book_model.dart';
 
-// Notifier giúp quản lý một state phức tạp (như List) và thông báo cho UI khi có thay đổi
-class LibraryNotifier extends Notifier<List<Book>> {
+class LibraryNotifier extends AsyncNotifier<List<Book>> {
   @override
-  List<Book> build() {
-    // Khởi tạo thư viện trống ban đầu
-    return [];
+  Future<List<Book>> build() async {
+    return _fetchSavedBooks();
   }
 
-  // Hàm thêm hoặc xóa sách khỏi thư viện
-  void toggleBookmark(Book book) {
-    final isSaved = state.any((b) => b.id == book.id);
+  Future<List<Book>> _fetchSavedBooks() async {
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (user == null) return [];
+
+    final db = FirebaseFirestore.instance;
+    final librarySnapshot = await db.collection('users').doc(user.uid).collection('library').orderBy('savedAt', descending: true).get();
+
+    List<Book> books = [];
+    for (var doc in librarySnapshot.docs) {
+      final bookDoc = await db.collection('books').doc(doc.id).get();
+      if (bookDoc.exists) {
+        // Lưu ý điều chỉnh hàm fromMap() cho khớp với model Book của bạn
+        books.add(Book.fromMap(bookDoc.data() as Map<String, dynamic>, bookDoc.id));
+      }
+    }
+    return books;
+  }
+
+  Future<void> toggleBookmark(Book book) async {
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (user == null) return;
+
+    final db = FirebaseFirestore.instance;
+    final libraryRef = db.collection('users').doc(user.uid).collection('library').doc(book.id);
+
+    final previousState = state.value ?? [];
+    final isSaved = previousState.any((b) => b.id == book.id);
+
     if (isSaved) {
-      // Nếu đã lưu rồi -> Xóa đi
-      state = state.where((b) => b.id != book.id).toList();
+      // Xóa khỏi DB và cập nhật UI ngay lập tức
+      state = AsyncData(previousState.where((b) => b.id != book.id).toList());
+      await libraryRef.delete();
     } else {
-      // Nếu chưa lưu -> Thêm vào danh sách hiện tại
-      state = [...state, book];
+      // Thêm vào DB và cập nhật UI
+      state = AsyncData([book, ...previousState]);
+      await libraryRef.set({'savedAt': FieldValue.serverTimestamp()});
     }
   }
 
-  // Hàm kiểm tra xem một cuốn sách đã được lưu hay chưa
   bool isBookSaved(String bookId) {
-    return state.any((b) => b.id == bookId);
+    return state.value?.any((b) => b.id == bookId) ?? false;
   }
 }
 
-// Provider để cung cấp LibraryNotifier cho toàn app
-final libraryProvider = NotifierProvider<LibraryNotifier, List<Book>>(() {
+final libraryProvider = AsyncNotifierProvider<LibraryNotifier, List<Book>>(() {
   return LibraryNotifier();
 });

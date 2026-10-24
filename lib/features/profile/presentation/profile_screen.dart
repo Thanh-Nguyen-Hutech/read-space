@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../library/data/library_provider.dart';
 import '../../../core/theme/theme_provider.dart';
 import 'my_works_screen.dart';
+
+// Provider lắng nghe luồng dữ liệu realtime của User hiện tại từ Firestore
+final userProfileStreamProvider = StreamProvider.family<Map<String, dynamic>?, String>((ref, uid) {
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .map((doc) => doc.data());
+});
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -13,10 +23,13 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(firebaseAuthProvider).currentUser;
-    final savedBooksCount = ref.watch(libraryProvider).length;
+    final savedBooksCount = ref.watch(libraryProvider).maybeWhen(data: (books) => books.length, orElse: () => 0);
     final isDarkMode = ref.watch(themeProvider) == ThemeMode.dark;
-    final myWorksAsync = ref.watch(myWorksProvider);
-    final myWorksCount = myWorksAsync.maybeWhen(data: (books) => books.length, orElse: () => 0);
+
+    // Lắng nghe dữ liệu profile động
+    final userProfileAsync = user != null
+        ? ref.watch(userProfileStreamProvider(user.uid))
+        : const AsyncValue.loading();
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -35,7 +48,7 @@ class ProfileScreen extends ConsumerWidget {
         child: Column(
           children: [
             // ==========================================
-            // HEADER: THÔNG TIN TÀI KHOẢN & MỨC VIP
+            // HEADER: THÔNG TIN TÀI KHOẢN & MỨC VIP (DYNAMIC)
             // ==========================================
             Container(
               padding: const EdgeInsets.all(24.0),
@@ -45,7 +58,6 @@ class ProfileScreen extends ConsumerWidget {
               ),
               child: Column(
                 children: [
-                  // Avatar có nút chỉnh sửa nhỏ bên cạnh
                   Stack(
                     children: [
                       CircleAvatar(
@@ -82,37 +94,43 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  // Tên / Email
                   Text(
                     user?.displayName ?? user?.email ?? 'Người dùng',
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Mức VIP / Thẻ hạng
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFFD700), Color(0xFFFFA500)], // Vàng gradient VIP
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2)),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 18),
-                        SizedBox(width: 4),
-                        Text('Thành viên Premium', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 16),
 
-                  // Nút Cập nhật thông tin
+                  // Dữ liệu Realtime từ Firestore
+                  userProfileAsync.when(
+                    data: (userData) {
+                      if (userData == null) return const SizedBox();
+
+                      final tierId = userData['tierId'] ?? 'bronze';
+                      final readMins = userData['totalReadingMinutes'] ?? 0;
+                      final posts = userData['totalPublishedChapters'] ?? 0;
+
+                      return Column(
+                        children: [
+                          // Badge Hạng Thành Viên
+                          _buildTierBadge(tierId),
+                          const SizedBox(height: 24),
+
+                          // Thống kê thành tích
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildStatCard(theme, 'Số phút đọc', '$readMins phút', Icons.timer_rounded, Colors.blue),
+                              _buildStatCard(theme, 'Đã xuất bản', '$posts chương', Icons.edit_document, Colors.green),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                    loading: () => const CircularProgressIndicator(),
+                    error: (e, _) => Text('Lỗi tải dữ liệu: $e'),
+                  ),
+
+                  const SizedBox(height: 24),
                   OutlinedButton.icon(
                     onPressed: () => context.push('/edit-profile'),
                     icon: const Icon(Icons.edit_note_rounded, size: 20),
@@ -133,8 +151,8 @@ class ProfileScreen extends ConsumerWidget {
               context,
               icon: Icons.history_edu_rounded,
               iconColor: Colors.blue,
-              title: 'Lịch sử đăng bài (Tác phẩm của tôi)',
-              subtitle: '$myWorksCount tác phẩm đã đăng tải',
+              title: 'Lịch sử đăng bài',
+              subtitle: 'Quản lý tác phẩm của tôi',
               onTap: () => context.push('/my-works'),
             ),
             _buildMenuItem(
@@ -144,7 +162,6 @@ class ProfileScreen extends ConsumerWidget {
               title: 'Thư viện sách đã lưu',
               subtitle: '$savedBooksCount cuốn sách',
               onTap: () {
-                // Điều hướng sang Tab Thư viện (Index 1)
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng bấm sang Tab Thư viện bên dưới')));
               },
             ),
@@ -172,7 +189,6 @@ class ProfileScreen extends ConsumerWidget {
                 value: isDarkMode,
                 activeColor: theme.colorScheme.primary,
                 onChanged: (value) {
-                  // Kích hoạt hàm đổi theme
                   ref.read(themeProvider.notifier).toggleTheme();
                 },
               ),
@@ -223,14 +239,68 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 48), // Padding đáy
+            const SizedBox(height: 48),
           ],
         ),
       ),
     );
   }
 
-  // Tiêu đề của từng khu vực (Section Header)
+  // Tiện ích hiển thị Thẻ trạng thái (Stats)
+  Widget _buildStatCard(ThemeData theme, String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 28),
+        ),
+        const SizedBox(height: 8),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+      ],
+    );
+  }
+
+  // Tiện ích hiển thị Badge Hạng thành viên
+  Widget _buildTierBadge(String tierId) {
+    String tierName = 'Đồng';
+    List<Color> gradientColors = [Colors.brown.shade300, Colors.brown.shade400];
+
+    if (tierId == 'silver') {
+      tierName = 'Bạc';
+      gradientColors = [Colors.grey.shade400, Colors.grey.shade600];
+    } else if (tierId == 'gold') {
+      tierName = 'Vàng';
+      gradientColors = [const Color(0xFFFFD700), const Color(0xFFFFA500)];
+    } else if (tierId == 'diamond') {
+      tierName = 'Kim Cương';
+      gradientColors = [Colors.blue.shade300, Colors.blue.shade600];
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: gradientColors),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: gradientColors.last.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 18),
+          const SizedBox(width: 6),
+          Text('Thành viên $tierName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(ThemeData theme, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 8),
@@ -248,7 +318,6 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  // Các dòng chức năng (ListTile)
   Widget _buildMenuItem(BuildContext context, {
     required IconData icon,
     required Color iconColor,
@@ -270,7 +339,6 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  // Hàm tiện ích hiển thị thông báo "Tính năng đang phát triển"
   void _showComingSoon(BuildContext context, String featureName) {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(

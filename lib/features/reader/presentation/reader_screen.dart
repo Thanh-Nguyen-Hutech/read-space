@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../data/reader_providers.dart';
 import 'package:intl/intl.dart';
 
@@ -14,23 +17,66 @@ class ReaderScreen extends ConsumerStatefulWidget {
   ConsumerState<ReaderScreen> createState() => _ReaderScreenState();
 }
 
-class _ReaderScreenState extends ConsumerState<ReaderScreen> {
+class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBindingObserver {
   double _fontSize = 18.0;
-
   late final PageController _pageController;
   late int _currentPage;
+
+  // Khai báo biến đếm thời gian
+  Timer? _readingTimer;
+  int _secondsElapsed = 0;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialIndex;
     _pageController = PageController(initialPage: _currentPage);
+
+    // Đăng ký theo dõi vòng đời ứng dụng & bắt đầu đếm giờ
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
   }
 
   @override
   void dispose() {
+    // Hủy bộ đếm và observer khi thoát màn hình
+    WidgetsBinding.instance.removeObserver(this);
+    _readingTimer?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  // Lắng nghe trạng thái: Tạm dừng đếm khi ẩn app (ra Home, nghe điện thoại...)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _readingTimer?.cancel();
+    }
+  }
+
+  void _startTimer() {
+    _readingTimer?.cancel();
+    _readingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _secondsElapsed++;
+      if (_secondsElapsed >= 60) {
+        _secondsElapsed = 0;
+        _incrementReadingMinute();
+      }
+    });
+  }
+
+  Future<void> _incrementReadingMinute() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'totalReadingMinutes': FieldValue.increment(1),
+      });
+    } catch (e) {
+      debugPrint('Lỗi cập nhật thời gian đọc: $e');
+    }
   }
 
   void _goToChapter(int index) {
@@ -49,7 +95,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         selection: const TextSelection.collapsed(offset: 0),
       );
     } catch (e) {
-      final doc = quill.Document()..insert(0, rawContent);
+      // Fix crash thiếu \n của các truyện cũ
+      String safeText = rawContent.isEmpty ? '\n' : rawContent;
+      if (!safeText.endsWith('\n')) safeText += '\n';
+
+      final doc = quill.Document()..insert(0, safeText);
       return quill.QuillController(
         document: doc,
         selection: const TextSelection.collapsed(offset: 0),
@@ -96,48 +146,51 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               final chapter = chapters[index];
               final readController = _initReaderController(chapter.content);
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              // Sử dụng Column + Expanded để chống crash chiều cao
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text(
                       chapter.title,
                       style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: theme.colorScheme.primary
                       ),
                     ),
-                    const SizedBox(height: 24),
+                  ),
 
-                    // SỬ DỤNG DEFAULT_TEXT_STYLE ĐỂ ÉP MÀU DARK MODE MÀ KHÔNG BỊ LỖI CÚ PHÁP
-                    DefaultTextStyle(
+                  Expanded(
+                    child: DefaultTextStyle(
                       style: TextStyle(
                         fontSize: _fontSize,
                         height: 1.8,
-                        color: theme.colorScheme.onSurface, // Tự động trắng/đen theo chế độ
+                        color: theme.colorScheme.onSurface,
                       ),
                       child: IgnorePointer(
-                        ignoring: true, // Chặn mọi thao tác chạm để bàn phím không hiện lên
-                        child: quill.QuillEditor.basic(
-                          controller: readController,
-                          // Đã xóa tham số readOnly: true để sửa triệt để lỗi đỏ
+                        ignoring: true,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: quill.QuillEditor.basic(
+                            controller: readController,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                  ),
 
-                    Align(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    child: Align(
                       alignment: Alignment.centerRight,
                       child: Text(
                         'Đã đăng lúc: ${DateFormat('HH:mm - dd/MM/yyyy').format(chapter.createdAt)}',
                         style: TextStyle(color: Colors.grey.shade500, fontStyle: FontStyle.italic, fontSize: 12),
                       ),
                     ),
-
-                    const SizedBox(height: 60),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           );
@@ -196,9 +249,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               onPressed: _currentPage < chaptersAsync.value!.length - 1
                   ? () => _goToChapter(_currentPage + 1)
                   : null,
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Text('Chương sau'),
                   SizedBox(width: 8),
                   Icon(Icons.arrow_forward_ios_rounded, size: 14),

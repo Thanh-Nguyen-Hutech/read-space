@@ -28,6 +28,11 @@ class MyWorksScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tác phẩm của tôi')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/upload-book'),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Tạo truyện mới'),
+      ),
       body: myWorksAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) => Center(child: Text('Lỗi: $e')),
