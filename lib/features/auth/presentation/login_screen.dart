@@ -1,7 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../home/data/home_providers.dart';
+import '../../library/data/library_provider.dart';
+import '../../notification/data/notification_providers.dart';
 import '../data/auth_repository.dart';
+import '../data/user_provider.dart';
+import '../../notification/presentation/notification_screen.dart';
+import '../../home/data/home_providers.dart';
+
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,11 +30,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
+      final user = ref.read(firebaseAuthProvider).currentUser;
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (userDoc.exists && userDoc.data()?['role'] == 'banned') {
+          await ref.read(authRepositoryProvider).signOut();
+          throw Exception('Tài khoản của bạn đã bị khóa do vi phạm Tiêu chuẩn cộng đồng.');
+        }
+      }
+      ref.invalidate(currentUserProfileProvider);
+      ref.invalidate(newBooksProvider);
+      ref.invalidate(hotAllTimeBooksProvider);
+      ref.invalidate(notificationsStreamProvider);
+      ref.invalidate(libraryProvider);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đăng nhập thành công!')),
         );
-        context.go('/home');
+        context.go('/'); // Lưu ý: Thường màn hình chính trong GoRouter cấu hình là '/'
       }
     } catch (e) {
       if (mounted) {

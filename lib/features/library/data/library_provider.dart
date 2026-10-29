@@ -38,13 +38,14 @@ class LibraryNotifier extends AsyncNotifier<List<Book>> {
     final isSaved = previousState.any((b) => b.id == book.id);
 
     if (isSaved) {
-      // Xóa khỏi DB và cập nhật UI ngay lập tức
       state = AsyncData(previousState.where((b) => b.id != book.id).toList());
       await libraryRef.delete();
     } else {
-      // Thêm vào DB và cập nhật UI
       state = AsyncData([book, ...previousState]);
-      await libraryRef.set({'savedAt': FieldValue.serverTimestamp()});
+      await libraryRef.set({
+        'bookId': book.id,
+        'savedAt': FieldValue.serverTimestamp()
+      });
     }
   }
 

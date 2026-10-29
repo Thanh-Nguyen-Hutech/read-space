@@ -29,11 +29,56 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     final booksAsync = ref.watch(booksProvider);
     final currentUserId = ref.watch(firebaseAuthProvider).currentUser?.uid;
 
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final isAdmin = userProfileAsync.maybeWhen(data: (p) => p?.role == 'admin', orElse: () => false);
+
     return booksAsync.when(
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, st) => Scaffold(body: Center(child: Text('Lỗi: $e'))),
       data: (books) {
         final book = books.firstWhere((b) => b.id == widget.bookId, orElse: () => books.first);
+        final isAuthor = currentUserId == book.authorId;
+
+        // BỘ LỌC BẢO MẬT: CHẶN TRUYỆN VI PHẠM
+        if (book.status == 'Khóa/Vi phạm' && !isAdmin && !isAuthor) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.gavel_rounded, size: 80, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text('Tác phẩm đã bị gỡ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      'Truyện này đang bị tạm khóa do vi phạm Tiêu chuẩn cộng đồng của hệ thống.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => context.pop(),
+                    child: const Text('Quay lại'),
+                  )
+                ],
+              ),
+            ),
+          );
+        }
+
+        Color statusColor = Colors.green;
+        IconData statusIcon = Icons.info_outline_rounded;
+        if (book.status == 'Khóa/Vi phạm') {
+          statusColor = Colors.red;
+          statusIcon = Icons.cancel_rounded;
+        } else if (book.status == 'Đã hoàn thành') {
+          statusColor = Colors.blue;
+          statusIcon = Icons.check_circle_outline_rounded;
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -70,29 +115,14 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Ảnh bìa
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                    book.coverUrl,
-                    height: 250,
-                    width: 170,
-                    fit: BoxFit.cover,
-                  ),
+                  child: Image.network(book.coverUrl, height: 250, width: 170, fit: BoxFit.cover),
                 ),
                 const SizedBox(height: 24),
-
-                // Tên sách và tác giả
-                Text(
-                  book.title,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text(book.title, textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text(
-                  book.author,
-                  style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary),
-                ),
+                Text(book.author, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary)),
                 const SizedBox(height: 16),
 
                 Row(
@@ -100,13 +130,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                   children: [
                     const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
                     const SizedBox(width: 4),
-                    Text(
-                      book.rating.toString(),
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
+                    Text(book.rating.toString(), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(width: 16),
 
-                    // Lắng nghe số chương
                     Consumer(
                       builder: (context, ref, child) {
                         final chapAsync = ref.watch(chaptersProvider(book.id));
@@ -122,20 +148,18 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     ),
                     const SizedBox(width: 16),
 
-                    // Trạng thái truyện
-                    const Icon(Icons.info_outline_rounded, color: Colors.green, size: 20),
+                    Icon(statusIcon, color: statusColor, size: 20),
                     const SizedBox(width: 4),
-                    Text('Đang ra', style: theme.textTheme.titleMedium?.copyWith(color: Colors.green)),
+                    Text(book.status, style: theme.textTheme.titleMedium?.copyWith(color: statusColor)),
                   ],
                 ),
                 const SizedBox(height: 24),
 
-                // Nút Bắt đầu đọc
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: () {
+                    onPressed: book.status == 'Khóa/Vi phạm' && !isAdmin && !isAuthor ? null : () {
                       context.push('/read/${book.id}');
                     },
                     icon: const Icon(Icons.menu_book_rounded),
@@ -148,8 +172,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                   ),
                 ),
 
-                // Công cụ Tác giả
-                if (currentUserId == book.authorId) ...[
+                if (isAuthor) ...[
                   const SizedBox(height: 16),
                   const Divider(),
                   Text('Công cụ Tác giả', style: theme.textTheme.labelLarge?.copyWith(color: Colors.grey)),
@@ -191,7 +214,6 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                 ],
                 const SizedBox(height: 32),
 
-                // Tóm tắt nội dung
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text('Tóm tắt nội dung', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
@@ -199,17 +221,11 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                 const SizedBox(height: 12),
                 Text(
                   book.description,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.6,
-                    color: theme.colorScheme.onSurface,
-                  ),
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.6, color: theme.colorScheme.onSurface),
                   textAlign: TextAlign.justify,
                 ),
                 const SizedBox(height: 32),
 
-                // ==========================================
-                // DANH SÁCH MỤC LỤC (ĐẢO NGƯỢC & GIỚI HẠN)
-                // ==========================================
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text('Mục lục tác phẩm', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
@@ -231,10 +247,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                           );
                         }
 
-                        // Đảo ngược danh sách: Chương mới nhất lên trên cùng
                         final displayChapters = chapters.reversed.toList();
-
-                        // Tính toán số lượng hiển thị (Max 10 nếu chưa bấm Xem thêm)
                         final int displayCount = _showAllChapters
                             ? displayChapters.length
                             : (displayChapters.length > 10 ? 10 : displayChapters.length);
@@ -250,19 +263,16 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
                                 return ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  // Hiển thị số chương gốc
                                   leading: Text(
                                       '${chapter.index}',
                                       style: theme.textTheme.titleLarge?.copyWith(color: Colors.grey.shade400, fontWeight: FontWeight.bold)
                                   ),
                                   title: Text(chapter.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                  // Hiển thị ngày tháng dưới tên chương
                                   subtitle: Text(
                                     DateFormat('dd/MM/yyyy - HH:mm').format(chapter.createdAt),
                                     style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
                                   ),
-                                  // Công cụ sửa/xóa cho tác giả
-                                  trailing: currentUserId == book.authorId
+                                  trailing: isAuthor
                                       ? PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
                                     onSelected: (value) async {
@@ -298,8 +308,6 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                 );
                               },
                             ),
-
-                            // Nút Xem Thêm
                             if (!_showAllChapters && displayChapters.length > 10)
                               TextButton.icon(
                                 onPressed: () {
@@ -318,14 +326,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                 const SizedBox(height: 32),
                 const Divider(),
                 const SizedBox(height: 16),
-
-                // ==========================================
-                // KHUNG ĐÁNH GIÁ SAO VÀ BÌNH LUẬN
-                // ==========================================
                 RatingBox(bookId: book.id, authorId: book.authorId),
-
                 CommentSection(bookId: book.id, authorId: book.authorId),
-
                 const SizedBox(height: 48),
               ],
             ),
@@ -398,7 +400,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         Text('Khu vực Thảo luận', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
 
-        // Ô NHẬP BÌNH LUẬN TEXT
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -424,7 +425,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         ),
         const SizedBox(height: 24),
 
-        // HIỂN THỊ DANH SÁCH BÌNH LUẬN (Tách Ghim & Độc giả)
         commentsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, st) => Text('Lỗi: $e'),
@@ -438,7 +438,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. KHU VỰC GHIM CỦA TÁC GIẢ
                 if (authorComments.isNotEmpty) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -475,7 +474,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                   const SizedBox(height: 24),
                 ],
 
-                // 2. DANH SÁCH BÌNH LUẬN ĐỘC GIẢ
                 if (readerComments.isNotEmpty)
                   ListView.builder(
                     shrinkWrap: true,
@@ -489,7 +487,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                     ),
                   ),
 
-                // 3. NÚT XEM THÊM
                 if (readerComments.length > _commentLimit)
                   Center(
                     child: TextButton.icon(
@@ -507,7 +504,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   }
 }
 
-// WIDGET ĐỘC LẬP HIỂN THỊ 1 DÒNG BÌNH LUẬN
 class CommentItemWidget extends ConsumerWidget {
   final CommentModel comment;
   final String bookId;
@@ -603,7 +599,6 @@ class CommentItemWidget extends ConsumerWidget {
                   ),
                 );
                 if (confirm == true) {
-                  // Đã xóa check rating vì rating được tách sang bảng riêng
                   ref.read(reviewRepositoryProvider).deleteComment(bookId, comment.id);
                 }
               },
@@ -614,7 +609,6 @@ class CommentItemWidget extends ConsumerWidget {
   }
 }
 
-// WIDGET ĐÁNH GIÁ SAO ĐỘC LẬP
 class RatingBox extends ConsumerWidget {
   final String bookId;
   final String authorId;

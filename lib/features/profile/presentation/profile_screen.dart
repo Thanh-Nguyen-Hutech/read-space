@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../library/data/library_provider.dart';
 import '../../../core/theme/theme_provider.dart';
-import 'my_works_screen.dart';
 
 // Provider lắng nghe luồng dữ liệu realtime của User hiện tại từ Firestore
 final userProfileStreamProvider = StreamProvider.family<Map<String, dynamic>?, String>((ref, uid) {
@@ -32,7 +31,7 @@ class ProfileScreen extends ConsumerWidget {
         : const AsyncValue.loading();
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Cá nhân', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: false,
@@ -144,6 +143,22 @@ class ProfileScreen extends ConsumerWidget {
             ),
 
             // ==========================================
+            // ADMIN DASHBOARD (CHỈ HIỂN THỊ KHI ROLE LÀ ADMIN)
+            // ==========================================
+            if (userProfileAsync.value != null && userProfileAsync.value!['role'] == 'admin') ...[
+              _buildSectionTitle(theme, 'Quản trị hệ thống'),
+              _buildMenuItem(
+                context,
+                icon: Icons.admin_panel_settings_rounded,
+                iconColor: Colors.red,
+                title: 'Bảng điều khiển Admin',
+                subtitle: 'Thống kê, Kiểm duyệt, Người dùng',
+                onTap: () => context.push('/admin'),
+              ),
+              const Divider(height: 32),
+            ],
+
+            // ==========================================
             // SECTION 1: QUẢN LÝ NỘI DUNG (HOẠT ĐỘNG)
             // ==========================================
             _buildSectionTitle(theme, 'Hoạt động của tôi'),
@@ -206,7 +221,51 @@ class ProfileScreen extends ConsumerWidget {
               icon: Icons.notifications_active_rounded,
               iconColor: Colors.orange,
               title: 'Cài đặt thông báo',
-              onTap: () => _showComingSoon(context, 'Cài đặt thông báo'),
+              subtitle: 'Tắt/bật thông báo đẩy',
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                  builder: (context) {
+                    bool pushEnabled = userProfileAsync.value?['pushEnabled'] ?? true;
+
+                    return StatefulBuilder(
+                        builder: (context, setModalState) {
+                          return Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Cài đặt Thông báo', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 16),
+                                SwitchListTile(
+                                  title: const Text('Nhận thông báo đẩy (Push Notifications)'),
+                                  subtitle: const Text('Cập nhật truyện mới, bình luận và thông báo từ hệ thống.'),
+                                  value: pushEnabled,
+                                  activeColor: Theme.of(context).colorScheme.primary,
+                                  onChanged: (value) async {
+                                    setModalState(() => pushEnabled = value);
+                                    if (user != null) {
+                                      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                                        'pushEnabled': value,
+                                      });
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                                  child: const Text('Hoàn tất'),
+                                )
+                              ],
+                            ),
+                          );
+                        }
+                    );
+                  },
+                );
+              },
             ),
             _buildMenuItem(
               context,

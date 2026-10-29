@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../home/data/home_providers.dart';
-// Import file chứa activeCategoriesProvider vừa tạo ở bước trước
+import '../../main/presentation/main_screen.dart';
+import '../data/explore_providers.dart';
 import '../../category/data/category_repository.dart';
 
 class ExploreScreen extends ConsumerWidget {
@@ -12,10 +12,10 @@ class ExploreScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final exploreBooksAsync = ref.watch(exploreBooksProvider);
-    final selectedTime = ref.watch(timeFilterProvider);
-
-    // Lắng nghe danh sách thể loại từ Firestore
     final categoriesAsync = ref.watch(activeCategoriesProvider);
+
+    final sortMode = ref.watch(exploreFilterModeProvider);
+    final isDescending = ref.watch(sortDescendingProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -28,23 +28,20 @@ class ExploreScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // Thanh tìm kiếm
+                // Thanh tìm kiếm sử dụng StateProvider toàn cục
                 TextField(
                   decoration: InputDecoration(
                     hintText: 'Tìm kiếm tên truyện, tác giả...',
                     prefixIcon: const Icon(Icons.search_rounded),
                     filled: true,
                     fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
-                  onChanged: (value) => ref.read(searchFilterProvider.notifier).state = value,
+                  onChanged: (value) => ref.read(exploreSearchQueryProvider.notifier).state = value,
                 ),
                 const SizedBox(height: 16),
 
-                // Lọc thể loại trượt ngang (Dữ liệu động)
+                // Lọc thể loại trượt ngang
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: categoriesAsync.when(
@@ -53,9 +50,7 @@ class ExploreScreen extends ConsumerWidget {
                     data: (categories) {
                       return Row(
                         children: [
-                          // Luôn giữ Chip "Tất cả" ở vị trí đầu tiên
                           _buildFilterChip(ref, 'all', 'Tất cả'),
-                          // Trải phẳng các danh mục lấy từ Firebase
                           ...categories.map((cat) => _buildFilterChip(ref, cat.id, cat.name)),
                         ],
                       );
@@ -64,20 +59,39 @@ class ExploreScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
 
-                // Bộ lọc theo thời gian / Trạng thái
+                // Bộ lọc Sắp xếp phức hợp
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.sort_rounded, size: 20, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    DropdownButton<String>(
-                      value: selectedTime,
-                      underline: const SizedBox(),
-                      items: const [
-                        DropdownMenuItem(value: 'newest', child: Text('Mới cập nhật')),
-                        DropdownMenuItem(value: 'completed', child: Text('Đã hoàn thành')),
+                    // Cột trái: Đảo chiều (Tăng / Giảm)
+                    InkWell(
+                      onTap: () => ref.read(sortDescendingProvider.notifier).state = !isDescending,
+                      child: Row(
+                        children: [
+                          Icon(isDescending ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded, size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text(isDescending ? 'Giảm dần' : 'Tăng dần', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+
+                    // Cột phải: Tiêu chí
+                    Row(
+                      children: [
+                        const Icon(Icons.sort_rounded, size: 20, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: sortMode,
+                          underline: const SizedBox(),
+                          items: const [
+                            DropdownMenuItem(value: 'Mới cập nhật', child: Text('Mới cập nhật')),
+                            DropdownMenuItem(value: 'Đánh giá cao', child: Text('Đánh giá cao')),
+                            DropdownMenuItem(value: 'Lượt xem', child: Text('Nhiều lượt xem')),
+                            DropdownMenuItem(value: 'Số chương', child: Text('Số lượng chương')),
+                          ],
+                          onChanged: (val) => ref.read(exploreFilterModeProvider.notifier).state = val!,
+                        ),
                       ],
-                      onChanged: (val) => ref.read(timeFilterProvider.notifier).state = val!,
                     ),
                   ],
                 ),
@@ -86,17 +100,14 @@ class ExploreScreen extends ConsumerWidget {
           ),
           const Divider(height: 1),
 
-          // Lưới kết quả tìm kiếm
+          // Lưới kết quả
           Expanded(
             child: exploreBooksAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text('Lỗi: $err')),
+              error: (err, _) => Center(child: Text('Lỗi tải danh sách: $err')),
               data: (books) {
-                if (books.isEmpty) {
-                  return const Center(
-                    child: Text('Không tìm thấy tác phẩm nào phù hợp.', style: TextStyle(color: Colors.grey)),
-                  );
-                }
+                if (books.isEmpty) return const Center(child: Text('Không tìm thấy tác phẩm nào phù hợp.', style: TextStyle(color: Colors.grey)));
+
                 return GridView.builder(
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -117,7 +128,7 @@ class ExploreScreen extends ConsumerWidget {
                           Expanded(
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.network(book.coverUrl, fit: BoxFit.cover, width: double.infinity),
+                              child: Image.network(book.coverUrl, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
                             ),
                           ),
                           const SizedBox(height: 8),

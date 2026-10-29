@@ -119,6 +119,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBinding
           IconButton(
             icon: const Icon(Icons.text_decrease_rounded),
             tooltip: 'Thu nhỏ chữ',
+            // Đã bổ sung dấu '-' bị thiếu
             onPressed: () => setState(() => _fontSize = (_fontSize - 2).clamp(12.0, 32.0)),
           ),
           IconButton(
@@ -146,7 +147,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBinding
               final chapter = chapters[index];
               final readController = _initReaderController(chapter.content);
 
-              // Sử dụng Column + Expanded để chống crash chiều cao
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -168,12 +168,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBinding
                         height: 1.8,
                         color: theme.colorScheme.onSurface,
                       ),
-                      child: IgnorePointer(
-                        ignoring: true,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: quill.QuillEditor.basic(
-                            controller: readController,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: quill.QuillEditor.basic(
+                          controller: readController,
+                          focusNode: FocusNode(canRequestFocus: false),
+                          scrollController: ScrollController(),
+                          config: const quill.QuillEditorConfig(
+                            showCursor: false,
+                            expands: true,
+                            padding: EdgeInsets.symmetric(horizontal: 20),
                           ),
                         ),
                       ),
@@ -203,6 +207,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBinding
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             TextButton.icon(
+              // Đã bổ sung dấu '-' bị thiếu
               onPressed: _currentPage > 0 ? () => _goToChapter(_currentPage - 1) : null,
               icon: const Icon(Icons.arrow_back_ios_rounded, size: 14),
               label: const Text('Chương trước'),
@@ -246,6 +251,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> with WidgetsBinding
               },
             ),
             TextButton(
+              // Đã bổ sung dấu '-' bị thiếu
               onPressed: _currentPage < chaptersAsync.value!.length - 1
                   ? () => _goToChapter(_currentPage + 1)
                   : null,

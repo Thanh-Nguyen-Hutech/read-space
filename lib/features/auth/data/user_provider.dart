@@ -9,7 +9,7 @@ class UserModel {
   final String email;
   final String name;
   final String? avatar;
-  final String role; // user hoac admin
+  final String role;
 
   UserModel({required this.uid, required this.email, required this.name, this.avatar, required this.role});
 

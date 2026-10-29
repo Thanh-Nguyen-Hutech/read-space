@@ -6,6 +6,8 @@ class Book {
   final String coverUrl;
   final double rating;
   final String description;
+  final String status;
+  final List<String> categoryIds; // Bổ sung trường quản lý mảng thể loại
 
   Book({
     required this.id,
@@ -15,6 +17,8 @@ class Book {
     required this.coverUrl,
     required this.rating,
     required this.description,
+    this.status = 'Đang ra',
+    this.categoryIds = const [], // Khởi tạo danh sách rỗng mặc định
   });
 
   factory Book.fromMap(Map<String, dynamic> map, String documentId) {
@@ -26,6 +30,8 @@ class Book {
       coverUrl: map['coverUrl'] ?? 'https://via.placeholder.com/150',
       rating: (map['rating'] ?? 0.0).toDouble(),
       description: map['description'] ?? '',
+      status: map['status'] ?? 'Đang ra',
+      categoryIds: List<String>.from(map['categoryIds'] ?? []),
     );
   }
 
@@ -37,6 +43,8 @@ class Book {
       'coverUrl': coverUrl,
       'rating': rating,
       'description': description,
+      'status': status,
+      'categoryIds': categoryIds,
       'createdAt': DateTime.now(),
     };
   }

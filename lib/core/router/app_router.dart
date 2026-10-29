@@ -14,6 +14,9 @@ import '../../features/studio/presentation/edit_chapter_screen.dart';
 import '../../features/profile/presentation/my_works_screen.dart';
 import '../../features/profile/presentation/my_reviews_screen.dart';
 import '../../features/studio/presentation/upload_book_screen.dart';
+import '../../features/admin/presentation/admin_dashboard_screen.dart';
+import '../../features/auth/data/auth_repository.dart';
+import '../../features/auth/data/user_provider.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -40,7 +43,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const MainScreen(),
       ),
       GoRoute(
-        path: '/book/:id', // Dấu hai chấm ':' định nghĩa tham số động
+        path: '/book/:id',
         name: 'book_detail',
         builder: (context, state) {
           final bookId = state.pathParameters['id']!;
@@ -71,8 +74,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'add_chapter',
         builder: (context, state) {
           final bookId = state.pathParameters['bookId']!;
-          final bookTitle = state.extra as String? ?? 'Truyện chưa đặt tên';
-          return AddChapterScreen(bookId: bookId, bookTitle: bookTitle);
+          // Đã xóa phần truyền bookTitle
+          return AddChapterScreen(bookId: bookId);
         },
       ),
       GoRoute(
@@ -85,7 +88,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'edit_chapter',
         builder: (context, state) {
           final bookId = state.pathParameters['bookId']!;
-          final chapter = state.extra as Chapter; // Nhận Chapter object
+          final chapter = state.extra as Chapter;
           return EditChapterScreen(bookId: bookId, chapter: chapter);
         },
       ),
@@ -98,6 +101,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/upload-book',
         name: 'upload_book',
         builder: (context, state) => const UploadBookScreen(),
+      ),
+      GoRoute(
+        path: '/admin',
+        name: 'admin',
+        builder: (context, state) => const AdminDashboardScreen(),
       ),
     ],
   );

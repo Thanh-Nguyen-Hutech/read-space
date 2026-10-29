@@ -2,8 +2,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../../profile/presentation/my_works_screen.dart';
 import '../data/studio_repository.dart';
-import '../../home/data/home_providers.dart';
+import '../../home/data/home_providers.dart' hide exploreBooksProvider;
+import '../../category/data/category_repository.dart';
+import '../../explore/data/explore_providers.dart';
 
 class UploadBookScreen extends ConsumerStatefulWidget {
   const UploadBookScreen({super.key});
@@ -19,19 +23,9 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
   File? _imageFile;
   bool _isLoading = false;
 
-  // Trạng thái cho Định dạng và Thể loại
+  // Gán cứng định dạng như cũ
   String _selectedType = 'Truyện chữ';
   final List<String> _selectedCategories = [];
-
-  // Dữ liệu thể loại mẫu
-  final Map<String, String> _availableCategories = {
-    'tien-hiep': 'Tiên hiệp',
-    'lang-man': 'Lãng mạn',
-    'khoa-huyen': 'Khoa huyễn',
-    'kiem-hiep': 'Kiếm hiệp',
-    'kinh-di': 'Kinh dị',
-    'hai-huoc': 'Hài hước',
-  };
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -48,7 +42,7 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
         _authorController.text.isEmpty ||
         _descController.text.isEmpty ||
         _imageFile == null ||
-        _selectedCategories.isEmpty) { // Bắt buộc chọn ít nhất 1 thể loại
+        _selectedCategories.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng điền đủ thông tin, chọn ảnh bìa và ít nhất 1 thể loại!')),
       );
@@ -62,29 +56,31 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
         author: _authorController.text.trim(),
         description: _descController.text.trim(),
         coverImage: _imageFile!,
-        type: _selectedType,                 // Truyền định dạng
-        categoryIds: _selectedCategories,    // Truyền danh sách thể loại
+        type: _selectedType,
+        categoryIds: _selectedCategories,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đăng tác phẩm thành công!')),
         );
-        ref.invalidate(booksProvider);
 
-        // Reset form
+        ref.invalidate(newBooksProvider);
+        ref.invalidate(myWorksProvider);
+        ref.invalidate(exploreBooksProvider);
+
         _titleController.clear();
         _authorController.clear();
         _descController.clear();
         _selectedCategories.clear();
-        _selectedType = 'Truyện chữ';
-        setState(() => _imageFile = null);
+        setState(() {
+          _selectedType = 'Truyện chữ';
+          _imageFile = null;
+        });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -94,6 +90,7 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final categoriesAsync = ref.watch(activeCategoriesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -105,7 +102,6 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Khu vực chọn ảnh bìa
             GestureDetector(
               onTap: _pickImage,
               child: Container(
@@ -149,7 +145,7 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
             ),
             const SizedBox(height: 16),
 
-            // CHỌN ĐỊNH DẠNG TRUYỆN
+            // CHỌN ĐỊNH DẠNG (FIXED LIST)
             const Text('Định dạng:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -159,32 +155,39 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               isExpanded: true,
-              items: ['Truyện chữ', 'Tiểu thuyết', 'Light Novel', 'Truyện ngắn']
+              items: ['Truyện chữ', 'Tiểu thuyết', 'Light Novel', 'Truyện ngắn', 'RomCom', 'Tự do']
                   .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                   .toList(),
               onChanged: (val) => setState(() => _selectedType = val!),
             ),
             const SizedBox(height: 16),
 
-            // CHỌN THỂ LOẠI (ĐA CHỌN)
+            // CHỌN THỂ LOẠI (DYNAMIC)
             const Text('Thể loại (Chọn nhiều):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 4.0,
-              children: _availableCategories.entries.map((entry) {
-                final isSelected = _selectedCategories.contains(entry.key);
-                return ChoiceChip(
-                  label: Text(entry.value),
-                  selected: isSelected,
-                  selectedColor: theme.colorScheme.primaryContainer,
-                  onSelected: (selected) {
-                    setState(() {
-                      selected ? _selectedCategories.add(entry.key) : _selectedCategories.remove(entry.key);
-                    });
-                  },
+            categoriesAsync.when(
+              loading: () => const CircularProgressIndicator(),
+              error: (err, _) => Text('Lỗi tải thể loại: $err', style: const TextStyle(color: Colors.red)),
+              data: (categories) {
+                if (categories.isEmpty) return const Text('Chưa có thể loại nào.');
+                return Wrap(
+                  spacing: 8.0,
+                  runSpacing: 4.0,
+                  children: categories.map((cat) {
+                    final isSelected = _selectedCategories.contains(cat.id);
+                    return ChoiceChip(
+                      label: Text(cat.name),
+                      selected: isSelected,
+                      selectedColor: theme.colorScheme.primaryContainer,
+                      onSelected: (selected) {
+                        setState(() {
+                          selected ? _selectedCategories.add(cat.id) : _selectedCategories.remove(cat.id);
+                        });
+                      },
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              },
             ),
             const SizedBox(height: 16),
 
@@ -199,7 +202,6 @@ class _UploadBookScreenState extends ConsumerState<UploadBookScreen> {
             ),
             const SizedBox(height: 32),
 
-            // Nút Đăng
             SizedBox(
               height: 50,
               child: ElevatedButton(

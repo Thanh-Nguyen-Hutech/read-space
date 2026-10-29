@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:go_router/go_router.dart';
+import '../../home/data/home_providers.dart';
+import '../../reader/data/reader_providers.dart';
 import '../data/studio_repository.dart';
 
 class AddChapterScreen extends ConsumerStatefulWidget {
   final String bookId;
-  final String bookTitle; // Bổ sung biến nhận tên truyện
 
   const AddChapterScreen({
     super.key,
     required this.bookId,
-    required this.bookTitle,
   });
 
   @override
@@ -31,12 +31,15 @@ class _AddChapterScreenState extends ConsumerState<AddChapterScreen> {
     try {
       final contentJson = jsonEncode(_quillController.document.toDelta().toJson());
 
+      // Không cần truyền bookTitle từ UI nữa
       await ref.read(studioRepositoryProvider).addChapter(
         bookId: widget.bookId,
         title: _titleController.text.trim(),
         content: contentJson,
-        bookTitle: widget.bookTitle, // Truyền tên truyện vào để tạo thông báo
       );
+
+      ref.invalidate(chaptersProvider(widget.bookId));
+      ref.invalidate(newBooksProvider);
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
@@ -60,7 +63,7 @@ class _AddChapterScreenState extends ConsumerState<AddChapterScreen> {
         actions: [
           _isLoading
               ? const Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator())
-              : TextButton(onPressed: _handleUpload, child: const Text('XUẤT BẢN')),
+              : TextButton(onPressed: _handleUpload, child: const Text('XUẤT BẢN', style: TextStyle(fontWeight: FontWeight.bold))),
         ],
       ),
       body: Column(
